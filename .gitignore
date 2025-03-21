@@ -1,0 +1,51 @@
+# Byte-compiled / cached Python files
+__pycache__/
+*.py[cod]
+*.so
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.env
+*.env
+
+# Database and migration files
+instance/
+migrations/
+*.sqlite3
+*.db
+
+# Logs and debug files
+*.log
+*.out
+*.err
+
+# Docker files
+docker-compose.override.yml
+docker-compose.yml.backup
+postgres_data/
+
+# Ignore compiled files and dependencies
+*.egg-info/
+*.dist-info/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Flask-specific cache
+flask_session/
+
+# Redis cache
+dump.rdb
+
+# Ignore large or unnecessary files
+uploads/
+media/
+staticfiles/
