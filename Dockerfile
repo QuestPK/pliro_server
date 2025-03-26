@@ -25,4 +25,4 @@ EXPOSE 8000
 
 # Start services
 ENTRYPOINT ["/wait-for-it.sh", "db", "--"]
-CMD ["flask", "run", "--host=0.0.0.0", "--port=8000"]
+CMD ["flask", "run", "--host=0.0.0.0", "--port=8000", "--reload"]
