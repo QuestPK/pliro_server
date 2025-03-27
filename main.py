@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
     # Startup events
     try:
         await create_database_if_not_exists(async_engine)
-        await init_redis()
+        # await init_redis()
         print("Redis and rate limiting initialized successfully")
     except Exception as e:
         print(f"Failed to initialize Redis: {e}")
