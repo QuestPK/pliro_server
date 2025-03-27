@@ -1,4 +1,7 @@
+import os
+
 import uvicorn
+from starlette.responses import FileResponse
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -40,8 +43,8 @@ def create_app() -> FastAPI:
     # CORS Configuration
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173"],  # Consider making this configurable
-        allow_credentials=True,
+        allow_origins=["*"],
+    allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -58,19 +61,33 @@ def create_app() -> FastAPI:
 app = create_app()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/dist", StaticFiles(directory="dist"), name="dist")
+
 
 # Optional: OpenAPI/Swagger UI customization
-@app.get("/")
-async def root():
-    """
-    Simple root endpoint to provide basic API information.
-    """
-    return {
-        "name": "Pliro API",
-        "version": "1.0",
-        "description": "API for Pliro Project Management",
-        "documentation": "/docs"
-    }
+# @app.get("/")
+# async def root():
+#     """
+#     Simple root endpoint to provide basic API information.
+#     """
+#     return {
+#         "name": "Pliro API",
+#         "version": "1.0",
+#         "description": "API for Pliro Project Management",
+#         "documentation": "/docs"
+#     }
+
+
+@app.get("/{full_path:path}")
+async def serve_frontend(full_path: str):
+    file_path = os.path.join("dist", full_path)  # Construct file path
+
+    # If the requested file exists in `dist`, serve it
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        return FileResponse(file_path)
+
+    # Otherwise, serve `index.html` (for SPA routes like `/dashboard`)
+    return FileResponse(os.path.join("dist", "index.html"))
 
 
 if __name__ == "__main__":
