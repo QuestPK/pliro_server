@@ -38,6 +38,7 @@ class ProjectModel(Base):
     countries: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
 
     technical_details: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    standard_mapping: Mapped[dict] = mapped_column(JSONB, nullable=True)
 
     multi_variant: Mapped[bool] = mapped_column(Boolean, default=False)
     pre_certified_components: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -46,6 +47,7 @@ class ProjectModel(Base):
 
     invitations = relationship("ProjectInvitations", back_populates="project")
     members = relationship("Members", back_populates="project")
+
 
     def __repr__(self) -> str:
         return f"Project(id={self.id}, name={self.name}, description={self.description}, user_id={self.user_id})"

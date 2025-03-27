@@ -30,6 +30,7 @@ class ProjectModel(BaseModel):
     user_id: int | None = None
     product_type: str | None = None
     product_category: str | None = None
+    standard_mapping: Dict[str,Any] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -65,7 +66,10 @@ async def create_new_project(project: ProjectModel, db: AsyncSession = Depends(g
     """
     Create a new project
     """
-    return await create_project(project.model_dump(), db)
+    project = await create_project(project.model_dump(), db)
+    await map_project_standard(project.id, ProjectStandardListResponse, db)
+
+    return project
 
 # Single Project Endpoints
 @router.get("/{project_id}", response_model=ProjectModel)
@@ -104,11 +108,7 @@ async def map_project_to_standard(
     Map project to standards
     """
 
-    result = await map_project_standard(project_id, ProjectStandardListResponse, db)
+    await map_project_standard(project_id, ProjectStandardListResponse, db)
 
-    print("Resutl on Map Standard", result)
 
-    if isinstance(result, str):  # Ensure it's not a JSON string
-        result = json.loads(result)
-
-    return result
+    return await get_project_by_id(project_id, db)

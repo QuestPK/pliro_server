@@ -15,6 +15,8 @@ COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+RUN mkdir -p /app/static && touch /app/static/.keep
+
 
 # Copy the rest of the application
 COPY . .

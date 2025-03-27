@@ -1,6 +1,5 @@
 from fastapi import HTTPException
-from pydantic import BaseModel
-
+import json
 from app.models.project_model import ProjectModel
 from app.extensions import AsyncSessionLocal
 from app.services.standard_service import get_all_standards
@@ -155,4 +154,8 @@ async def map_project_standard(project_id: int, structured_response, session: As
     """
 
     result = call_openai_structured(prompt, structured_response)
+
+    project.standard_mapping = json.loads(result)
+    await session.commit()
+
     return result

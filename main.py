@@ -5,7 +5,9 @@ from contextlib import asynccontextmanager
 
 from app.config import Settings
 from app.routes import project_routes, user_routes, standard_routes
-from app.extensions import init_redis, create_database_if_not_exists, async_engine
+# from app.extensions import init_redis, create_database_if_not_exists, async_engine
+from app.extensions import  create_database_if_not_exists, async_engine
+from fastapi.staticfiles import StaticFiles
 
 
 @asynccontextmanager
@@ -55,6 +57,7 @@ def create_app() -> FastAPI:
 
 app = create_app()
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Optional: OpenAPI/Swagger UI customization
 @app.get("/")
