@@ -19,7 +19,6 @@ services:
       retries: 5
       start_period: 10s
 
-
   redis:
     image: "redis:alpine"
     container_name: redis_container
@@ -39,9 +38,9 @@ services:
     depends_on:
       - db
 
-  flask_app:
+  fastapi_app:
     build: .
-    container_name: flask_container
+    container_name: fastapi_container
     restart: always
     depends_on:
       db:
@@ -49,12 +48,32 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB}
-      REDIS_URL: ${REDIS_URL}
-      FLASK_ENV: ${FLASK_ENV}
-      FLASK_APP: app.py
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app
     ports:
       - "8000:8000"
+    volumes:
+      - .:/app
+
+  worker:
+    build: .
+    container_name: worker_container
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB}
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: ["python", "-m", "app.worker"]
 
 volumes:
   postgres_data:

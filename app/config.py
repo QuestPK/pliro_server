@@ -1,24 +1,29 @@
 import os
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Config:
-    SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
+class Settings(BaseSettings):
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key")
 
-    # Database (PostgreSQL)
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Database Settings
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
-    # Firebase Auth
-    # FIREBASE_CREDENTIALS = "path/to/firebase_credentials.json"
+    # Redis Settings
+    REDIS_URL: str = os.getenv("REDIS_URL", "")
 
-    # Redis & Celery
-    REDIS_URL = "redis://redis:6379/0"
-    CELERY_BROKER_URL = REDIS_URL
-    CELERY_RESULT_BACKEND = REDIS_URL
+    # API Configuration
+    API_V1_STR: str = "/api/v1"
 
-    # API Docs (Swagger)
-    RESTX_VALIDATE = True
-    SWAGGER_UI_DOC_EXPANSION = "list"
-    RATELIMIT_STORAGE_URI = "redis://redis:6379/0"
+    # Rate Limiting
+    RATE_LIMIT_REQUESTS: int = 100
+    RATE_LIMIT_PERIOD: int = 86400  # 1 day in seconds
 
-config = Config()
+    # Allow extra fields to be ignored
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra='ignore'  # This will allow extra environment variables without raising an error
+    )
+
+
+settings = Settings()

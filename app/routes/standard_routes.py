@@ -1,39 +1,69 @@
-from flask_restx import Namespace, Resource, fields
-from flask import request
-from app.services.standard_service import create_standard, get_standard_by_id, get_all_standards, update_standard, delete_standard
+from typing import List, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, ConfigDict
 
-api = Namespace("Standards", description="Standard management")
+from app.extensions import get_db
+from app.services.standard_service import (
+    create_standard,
+    get_standard_by_id,
+    get_all_standards,
+    update_standard,
+    delete_standard
+)
 
-standard_model = api.model("Standard", {
-    "id": fields.Integer(readOnly=True),
-    "name": fields.String(required=True, description="Standard name"),
-    "description": fields.String(description="Detailed description"),
-})
+# Pydantic Model for Standard
+class StandardModel(BaseModel):
+    id: int | None = None
+    name: str
+    description: str | None = None
 
-@api.route("/")
-class StandardList(Resource):
-    @api.marshal_list_with(standard_model)
-    def get(self):
-        return get_all_standards()
+    model_config = ConfigDict(from_attributes=True)
 
-    @api.expect(standard_model)
-    @api.marshal_with(standard_model, code=201)
-    def post(self):
-        data = request.json
-        return create_standard(data), 201
+# Create the router
+router = APIRouter(
+    tags=["standards"],
+    responses={404: {"description": "Not found"}}
+)
 
-@api.route("/<int:id>")
-class StandardResource(Resource):
-    @api.marshal_with(standard_model)
-    def get(self, id):
-        return get_standard_by_id(id)
+# Standard List and Creation Endpoint
+@router.get("", response_model=List[StandardModel])
+async def list_standards(db: AsyncSession = Depends(get_db)):
+    """
+    Retrieve all standards
+    """
+    return await get_all_standards(db)
 
-    @api.expect(standard_model)
-    @api.marshal_with(standard_model)
-    def put(self, id):
-        data = request.json
-        return update_standard(id, data)
+@router.post("", response_model=StandardModel, status_code=201)
+async def create_new_standard(standard: StandardModel, db: AsyncSession = Depends(get_db)):
+    """
+    Create a new standard
+    """
+    return await create_standard(standard.model_dump(), db)
 
-    def delete(self, id):
-        delete_standard(id)
-        return {"message": "Standard deleted"}, 204
+# Single Standard Endpoints
+@router.get("/{standard_id}", response_model=StandardModel)
+async def get_standard(standard_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Retrieve a specific standard by ID
+    """
+    return await get_standard_by_id(standard_id, db)
+
+@router.put("/{standard_id}", response_model=StandardModel)
+async def update_existing_standard(
+    standard_id: int,
+    standard: StandardModel,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update an existing standard
+    """
+    return await update_standard(standard_id, standard.model_dump(), db)
+
+@router.delete("/{standard_id}", status_code=204)
+async def remove_standard(standard_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Delete a standard
+    """
+    await delete_standard(standard_id, db)
+    return None

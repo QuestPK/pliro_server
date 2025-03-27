@@ -1,26 +1,84 @@
+from fastapi import HTTPException
+from sqlalchemy.future import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.standard_model import Standard
-from app.extensions import db
 
-def create_standard(data):
-    standard = Standard(**data)
-    db.session.add(standard)
-    db.session.commit()
-    return standard
+async def create_standard(data: dict, session: AsyncSession):
+    """
+    Create a new standard
 
-def get_standard_by_id(standard_id):
-    return Standard.query.get_or_404(standard_id)
+    Args:
+        data (dict): Standard creation data
+        session (AsyncSession): Database session
 
-def get_all_standards():
-    return Standard.query.all()
+    Returns:
+        Standard: Created standard object
+    """
+    new_standard = Standard(**data)
+    session.add(new_standard)
+    await session.commit()
+    await session.refresh(new_standard)
+    return new_standard
 
-def update_standard(standard_id, data):
-    standard = get_standard_by_id(standard_id)
+async def get_standard_by_id(standard_id: int, session: AsyncSession):
+    """
+    Retrieve a standard by its ID
+
+    Args:
+        standard_id (int): ID of the standard
+        session (AsyncSession): Database session
+
+    Returns:
+        Standard: Standard object
+
+    Raises:
+        HTTPException: If standard is not found
+    """
+    result = await session.get(Standard, standard_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Standard not found")
+    return result
+
+async def get_all_standards(session: AsyncSession):
+    """
+    Retrieve all standards
+
+    Args:
+        session (AsyncSession): Database session
+
+    Returns:
+        list: List of all standards
+    """
+    result = await session.execute(select(Standard))
+    return result.scalars().all()
+
+async def update_standard(standard_id: int, data: dict, session: AsyncSession):
+    """
+    Update an existing standard
+
+    Args:
+        standard_id (int): ID of the standard to update
+        data (dict): Update data
+        session (AsyncSession): Database session
+
+    Returns:
+        Standard: Updated standard object
+    """
+    standard = await get_standard_by_id(standard_id, session)
     for key, value in data.items():
         setattr(standard, key, value)
-    db.session.commit()
+    await session.commit()
+    await session.refresh(standard)
     return standard
 
-def delete_standard(standard_id):
-    standard = get_standard_by_id(standard_id)
-    db.session.delete(standard)
-    db.session.commit()
+async def delete_standard(standard_id: int, session: AsyncSession):
+    """
+    Delete a standard by its ID
+
+    Args:
+        standard_id (int): ID of the standard to delete
+        session (AsyncSession): Database session
+    """
+    standard = await get_standard_by_id(standard_id, session)
+    await session.delete(standard)
+    await session.commit()

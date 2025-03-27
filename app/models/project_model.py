@@ -1,19 +1,35 @@
 import enum
-from sqlalchemy import ForeignKey, Enum
+from sqlalchemy import ForeignKey, Enum, Column
 from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Integer, Boolean
+from sqlalchemy.ext.declarative import declarative_base
 
-from app.extensions import db
+from app.models.base import Base
 
 
-class ProjectModel(db.Model):
+class InvitationStatus(enum.Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+class MemberRole(enum.Enum):
+    ADMIN = "admin"
+    MEMBER = "member"
+
+class MemberStatus(enum.Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+class ProjectModel(Base):
     __tablename__ = "projects"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     use: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(String, nullable=False)
+    product_type: Mapped[str] = mapped_column(String, nullable=False)
+    product_category: Mapped[str] = mapped_column(String, nullable=False)
 
     dimensions: Mapped[str] = mapped_column(String, nullable=True)
     weight: Mapped[str] = mapped_column(String, nullable=True)
@@ -21,7 +37,7 @@ class ProjectModel(db.Model):
     regions: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
     countries: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
 
-    technical_details: Mapped[JSONB] = mapped_column(JSONB, nullable=True)
+    technical_details: Mapped[dict] = mapped_column(JSONB, nullable=True)
 
     multi_variant: Mapped[bool] = mapped_column(Boolean, default=False)
     pre_certified_components: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -35,13 +51,7 @@ class ProjectModel(db.Model):
         return f"Project(id={self.id}, name={self.name}, description={self.description}, user_id={self.user_id})"
 
 
-class InvitationStatus(enum.Enum):
-    PENDING = "pending"
-    ACCEPTED = "accepted"
-    REJECTED = "rejected"
-
-
-class ProjectInvitations(db.Model):
+class ProjectInvitations(Base):
     __tablename__ = "project_invitations"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -52,17 +62,7 @@ class ProjectInvitations(db.Model):
     project = relationship("ProjectModel", back_populates="invitations")
 
 
-class MemberRole(enum.Enum):
-    ADMIN = "admin"
-    MEMBER = "member"
-
-
-class MemberStatus(enum.Enum):
-    ACTIVE = "active"
-    INACTIVE = "inactive"
-
-
-class Members(db.Model):
+class Members(Base):
     __tablename__ = "members"
 
     id: Mapped[int] = mapped_column(primary_key=True)

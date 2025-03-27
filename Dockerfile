@@ -11,18 +11,16 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy project files
-COPY . .
+COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Wait for DB before running migrations
-COPY ./wait-for-it.sh /wait-for-it.sh
-RUN chmod +x /wait-for-it.sh
+# Copy the rest of the application
+COPY . .
 
-# Expose Flask port
+# Expose FastAPI port
 EXPOSE 8000
 
-# Start services
-ENTRYPOINT ["/wait-for-it.sh", "db", "--"]
-CMD ["flask", "run", "--host=0.0.0.0", "--port=8000", "--reload"]
+# Start the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
