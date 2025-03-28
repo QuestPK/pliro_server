@@ -3,10 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon"  href="/logo.png" />
+    <script>
+      // Apply saved theme immediately before any render (stop flickering)
+      (function() {
+        const savedTheme = localStorage.getItem('theme') || 'nord';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        document.documentElement.classList.add('theme-' + savedTheme);
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pliro</title>
-    <script type="module" crossorigin src="/assets/index-CPZj1CcH.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-C89p12Gm.css">
+    <script type="module" crossorigin src="/assets/index-BBioWi52.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CbcGo_Lp.css">
   </head>
   <body>
     <div id="root"></div>
