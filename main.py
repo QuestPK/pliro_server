@@ -17,8 +17,13 @@ async def lifespan(app: FastAPI):
     Application lifespan context manager for startup and shutdown events.
     """
     # Startup events
+
     try:
         await create_database_if_not_exists(async_engine)
+    except Exception as e:
+        print(f"Failed to Database: {e}")
+
+    try:
         await init_redis()
         print("Redis and rate limiting initialized successfully")
     except Exception as e:
