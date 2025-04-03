@@ -6,10 +6,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from app.config import Settings
 from app.routes import project_routes, user_routes, standard_routes
-# from app.extensions import init_redis, create_database_if_not_exists, async_engine
-from app.extensions import  create_database_if_not_exists, async_engine
+from app.extensions import create_database_if_not_exists, async_engine, init_redis
 from fastapi.staticfiles import StaticFiles
 
 
@@ -21,7 +19,7 @@ async def lifespan(app: FastAPI):
     # Startup events
     try:
         await create_database_if_not_exists(async_engine)
-        # await init_redis()
+        await init_redis()
         print("Redis and rate limiting initialized successfully")
     except Exception as e:
         print(f"Failed to initialize Redis: {e}")
@@ -63,19 +61,6 @@ app = create_app()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/dist", StaticFiles(directory="dist"), name="dist")
 
-
-# Optional: OpenAPI/Swagger UI customization
-# @app.get("/")
-# async def root():
-#     """
-#     Simple root endpoint to provide basic API information.
-#     """
-#     return {
-#         "name": "Pliro API",
-#         "version": "1.0",
-#         "description": "API for Pliro Project Management",
-#         "documentation": "/docs"
-#     }
 
 
 @app.get("/{full_path:path}")

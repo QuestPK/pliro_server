@@ -1,5 +1,7 @@
 import os
 
+import redis
+from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, AsyncEngine
@@ -23,34 +25,33 @@ AsyncSessionLocal = sessionmaker(
 
 
 # Redis and Rate Limiting
-# async def init_redis():
-#     """
-#     Initialize Redis for caching and rate limiting.
-#
-#     Returns:
-#         Redis client for further use if needed.
-#     """
-#     redis_url = os.getenv("REDIS_URL")
-#     if not redis_url:
-#         raise ValueError("REDIS_URL environment variable is not set")
-#
-#     try:
-#         redis_client = redis.from_url(
-#             redis_url,
-#             encoding="utf8",
-#             decode_responses=True
-#         )
-#
-#         # Initialize rate limiting
-#         await FastAPILimiter.init(redis_client)
-#
-#         # Initialize caching
-#         await FastAPICache.init(RedisBackend(redis_client), prefix="fastapi-cache:")
-#
-#         return redis_client
-#     except Exception as e:
-#         print(f"Error initializing Redis: {e}")
-#         raise
+async def init_redis():
+    """
+    Initialize Redis for caching and rate limiting.
+
+    Returns:
+        Redis client for further use if needed.
+    """
+    redis_url = os.getenv("REDIS_URL")
+    if not redis_url:
+        raise ValueError("REDIS_URL environment variable is not set")
+
+    try:
+        redis_client = redis.from_url(
+            redis_url,
+            encoding="utf8",
+            decode_responses=True
+        )
+
+        # Initialize rate limiting
+        FastAPILimiter.init(redis_client)
+
+        # Initialize caching
+        FastAPICache.init(RedisBackend(redis_client), prefix="fastapi-cache:")
+
+    except Exception as e:
+        print(f"Error initializing Redis: {e}")
+        raise
 
 
 # Dependency for database sessions
@@ -81,3 +82,12 @@ async def create_database_if_not_exists(async_engine: AsyncEngine):
         async with async_engine.begin() as conn:
             await conn.execute(text("CREATE DATABASE pliro_db"))
         print("Database created successfully.")
+
+
+async def ensure_cache_initialized():
+    """Dependency to ensure cache is initialized before accessing routes"""
+    try:
+        FastAPICache.get_prefix()  # This will raise the assertion if not initialized
+        return True
+    except AssertionError:
+        raise HTTPException(status_code=503, detail="Service initializing, please try again in a moment")
