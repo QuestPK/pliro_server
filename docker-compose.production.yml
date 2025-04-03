@@ -20,7 +20,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB}
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6380/0  # Corrected Redis URL
       PYTHONPATH: /app
     ports:
