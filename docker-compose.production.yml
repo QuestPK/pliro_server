@@ -6,7 +6,7 @@ services:
     container_name: redis_container
     restart: always
     ports:
-      - "6379:6379"  # Corrected Redis port
+      - "6380:6379"  # Corrected Redis port
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
