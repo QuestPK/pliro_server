@@ -222,7 +222,7 @@ You have to return in form of json with the following structure:
     # and the side effect (updating the DB). Generally not cached unless the exact
     # same request needs to be repeated frequently without changes.
     try:
-        result_json_str = await call_openai_structured(prompt, structured_response_model) # Expecting JSON string
+        result_json_str =  call_openai_structured(prompt, structured_response_model) # Expecting JSON string
         mapped_data = json.loads(result_json_str) # Parse the JSON string
     except Exception as e:
         # Handle potential errors from OpenAI call or JSON parsing

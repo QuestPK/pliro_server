@@ -18,7 +18,7 @@ def call_openai(prompt):
 
 def call_openai_structured(prompt,structured_response):
     try:
-        response = client.beta.chat.completions.parse(
+        response =  client.beta.chat.completions.parse(
             model="gpt-4o",
             response_format=structured_response,
             messages=[{"role": "system", "content": "You are a Expert in Finding Compliance Standards for new Product that are to be launched."},
