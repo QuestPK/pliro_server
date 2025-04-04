@@ -53,3 +53,4 @@ staticfiles/
 
 alembic.ini
 alembic
+migrations
