@@ -49,3 +49,7 @@ dump.rdb
 uploads/
 media/
 staticfiles/
+
+
+alembic.ini
+alembic
