@@ -126,46 +126,29 @@ async def list_projects(
 
 @router.post("", response_model=ProjectResponseModel, status_code=201,dependencies=[Depends(ensure_cache_initialized)]) # Use ProjectResponseModel
 async def create_new_project(
-    project_data: ProjectCreateModel, # Use the specific create model
+    project_data: ProjectCreateModel,
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Create a new project.
-    """
-    # Note: Cache invalidation for the list endpoint (page 0) would ideally happen here.
-    # Relying on expiration for now.
 
-    # Dump the model data for the service function
     project_dict = project_data.model_dump()
     created_project = await create_project(project_dict, db)
 
-    # Trigger standard mapping after creation
     try:
         await map_project_standard(created_project.id, ProjectStandardListResponse, db)
     except HTTPException as e:
-        # Log the error, but potentially allow project creation to succeed anyway?
         print(f"Standard mapping failed after creating project {created_project.id}: {e.detail}")
-        # Decide if this should cause the POST to fail entirely
-        # raise e # Re-raise if mapping failure should prevent success
 
-    # Fetch the potentially updated project data (including standard_mapping)
-    # This call might benefit from the get_project cache if called again soon.
     final_project = await get_project_by_id(created_project.id, db)
     if final_project is None:
-         # Should not happen if creation succeeded, but good practice
          raise HTTPException(status_code=500, detail="Failed to retrieve created project.")
 
     return final_project
 
 
-# --- Single Project Endpoints ---
 
 @router.get("/{project_id}", response_model=ProjectResponseModel,dependencies=[Depends(ensure_cache_initialized)]) # Use ProjectResponseModel
-@cache(expire=60) # Cache based on project_id
+@cache(expire=60)
 async def get_project(project_id: int, db: AsyncSession = Depends(get_db)):
-    """
-    Retrieve a specific project by ID. Cached for 60 seconds.
-    """
     project = await get_project_by_id(project_id, db)
     if project is None:
          raise HTTPException(status_code=404, detail="Project not found")
@@ -174,16 +157,9 @@ async def get_project(project_id: int, db: AsyncSession = Depends(get_db)):
 @router.put("/{project_id}", response_model=ProjectResponseModel,dependencies=[Depends(ensure_cache_initialized)]) # Use ProjectResponseModel
 async def update_existing_project(
     project_id: int,
-    project_update_data: ProjectUpdateModel, # Use the specific update model
+    project_update_data: ProjectUpdateModel,
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Update an existing project. Only provided fields will be updated.
-    """
-    # Note: Cache invalidation for this project_id and potentially list pages
-    # would ideally happen here. Relying on expiration for now.
-
-    # Get a dictionary with only the fields that were actually sent in the request
     update_data = project_update_data.model_dump(exclude_unset=True)
 
     if not update_data:
@@ -194,10 +170,6 @@ async def update_existing_project(
     if updated_project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Consider manually clearing the cache for this project_id here:
-    # from fastapi_cache import FastAPICache
-    # await FastAPICache.clear(namespace="default", key=f"...") # Key construction needed
-
     return updated_project
 
 @router.delete("/{project_id}", status_code=204,dependencies=[Depends(ensure_cache_initialized)])
@@ -205,41 +177,27 @@ async def remove_project(project_id: int, db: AsyncSession = Depends(get_db)):
     """
     Delete a project.
     """
-    # Note: Cache invalidation for this project_id and potentially list pages
-    # would ideally happen here. Relying on expiration for now.
 
     deleted = await delete_project(project_id, db)
     if not deleted:
          raise HTTPException(status_code=404, detail="Project not found")
 
-    # Consider manually clearing the cache for this project_id here
 
-    return None # Return None for 204 No Content
+    return None
 
-# --- Project Standard Mapping Endpoint ---
 
 @router.post("/{project_id}/map_standard", response_model=ProjectResponseModel,dependencies=[Depends(ensure_cache_initialized)]) # Return updated project
 async def map_project_to_standard(
     project_id: int,
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Map project to standards. Fetches the project, calls the mapping service,
-    updates the project, and returns the updated project.
-    """
-    # Note: Cache invalidation for this project_id would ideally happen here.
-
-    # Service function handles checking if project exists and updates it
     mapping_result = await map_project_standard(project_id, ProjectStandardListResponse, db)
 
     if mapping_result is None: # Indicates project was not found by the service
          raise HTTPException(status_code=404, detail="Project not found")
 
-    # Fetch the updated project data to return
-    # This call will benefit from the cache added to the get_project route
     updated_project = await get_project_by_id(project_id, db)
     if updated_project is None:
-         # Should not happen if mapping succeeded, but good practice
          raise HTTPException(status_code=500, detail="Failed to retrieve project after mapping.")
 
     return updated_project

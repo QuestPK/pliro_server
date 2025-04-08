@@ -21,3 +21,7 @@ werkzeug
 pydentic
 pydentic[email]
 email-validator
+PyPDF2
+boto3
+botocore
+aiohttp
