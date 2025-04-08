@@ -54,3 +54,4 @@ staticfiles/
 alembic.ini
 alembic
 migrations
+alembic/versions
