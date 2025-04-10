@@ -120,3 +120,29 @@ async def get_file_from_do(file_path: str) -> Optional[bytes]:
         # Log the error and return None
         print(f"Error retrieving file {file_path}: {str(e)}")
         return None
+
+
+def generate_presigned_url(file_path: str, expiration: int = 10000) -> Optional[str]:
+    try:
+
+        print('Generating presigned URL for file:', file_path)
+
+        parts = file_path.split(f"{SPACE_ENDPOINT}/{SPACE_NAME}/")
+        if len(parts) != 2:
+            raise ValueError(f"Invalid file path format: {file_path}")
+
+        object_key = parts[1]
+
+        print("object_key",object_key)
+
+        response = s3_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': SPACE_NAME, 'Key': object_key},
+            ExpiresIn=expiration
+        )
+
+
+        return response
+    except Exception as e:
+        print(f"Error generating pre-signed URL: {e}")
+        return None

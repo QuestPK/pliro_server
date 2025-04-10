@@ -1,9 +1,8 @@
+import json
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, ConfigDict, Field
 from fastapi_cache.decorator import cache
-from datetime import date
 
 from app.extensions import get_db, ensure_cache_initialized
 from app.services.standard_service import (
@@ -17,88 +16,70 @@ from app.services.standard_service import (
     approve_standard,
     reject_standard, upload_standard
 )
-
-
-class StandardBase(BaseModel):
-    name: str
-    description: Optional[str]
-    issuingOrganization: Optional[str]
-    standardNumber: Optional[str]
-    version: Optional[str]
-    standardOwner: Optional[str]
-    standardWebsite: Optional[str]
-    issueDate: Optional[date]
-    effectiveDate: Optional[date]
-    revisions: List[str]
-    generalCategories: List[str]
-    itCategories: List[str]
-    additionalNotes: Optional[str] = None
-
-class OpenAIStandardModel(BaseModel):
-    name: str
-    description: Optional[str]
-    issuingOrganization: Optional[str]
-    standardNumber: Optional[str]
-    version: Optional[str]
-    standardOwner: Optional[str]
-    standardWebsite: Optional[str]
-    issueDate: Optional[str]
-    effectiveDate: Optional[str]
-    revisions: List[str]
-    generalCategories: List[str]
-    itCategories: List[str]
-    additionalNotes: Optional[str] = None
-
-
-class StandardCreateModel(StandardBase):
-    pass
-
-
-class StandardUpdateModel(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    issuingOrganization: Optional[str] = None
-    standardNumber: Optional[str] = None
-    version: Optional[str] = None
-    standardOwner: Optional[str] = None
-    standardWebsite: Optional[str] = None
-    issueDate: Optional[date] = None
-    effectiveDate: Optional[str] = None
-    revisions: Optional[List[str]] = None
-    generalCategories: Optional[List[str]] = None
-    itCategories: Optional[List[str]] = None
-    additionalNotes: Optional[str] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class StandardResponseModel(StandardBase):
-    id: int
-    file_path: Optional[str] = None
-    approval_status: str
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class StandardPage(BaseModel):
-    items: List[StandardResponseModel]
-    total: int
-    page: int
-    size: int
-
-
-class BulkUploadResponse(BaseModel):
-    total_processed: int
-    successful: int
-    failed: int
-    results: List[Dict[str, Any]]
-
+from app.types.standard_types import StandardPage, StandardResponseModel, StandardCreateModel, StandardUpdateModel, \
+    BulkUploadResponse, OpenAIStandardModel
 
 router = APIRouter(
     prefix="",
     tags=["standards"],
     responses={404: {"description": "Not found"}}
 )
+
+
+async def parse_standard_form_data(
+        name: str = Form(None),
+        description: str = Form(None),
+        issuingOrganization: str = Form(None),
+        standardNumber: str = Form(None),
+        version: str = Form(None),
+        standardOwner: str = Form(None),
+        effectiveDate: str = Form(None),
+        issueDate: str = Form(None),
+        standardWebsite: str = Form(None),
+        generalCategories: str = Form(None),
+        itCategories: str = Form(None),
+        additionalNotes: str = Form(None),
+        selectRegions: str = Form(None),
+        selectCountries: str = Form(None),
+        revisions: str = Form(None),
+) -> Dict[str, Any]:
+    data = {}
+
+    # Add non-empty fields to data
+    if name:
+        data["name"] = name
+    if description:
+        data["description"] = description
+    if issuingOrganization:
+        data["issuingOrganization"] = issuingOrganization
+    if standardNumber:
+        data["standardNumber"] = standardNumber
+    if version:
+        data["version"] = version
+    if standardOwner:
+        data["standardOwner"] = standardOwner
+    if effectiveDate:
+        data["effectiveDate"] = effectiveDate
+    if issueDate:
+        data["issueDate"] = issueDate
+    if standardWebsite:
+        data["standardWebsite"] = standardWebsite
+
+    # Parse JSON fields
+    if generalCategories:
+        data["generalCategories"] = json.loads(generalCategories)
+    if itCategories:
+        data["itCategories"] = json.loads(itCategories)
+    if additionalNotes:
+        data["additionalNotes"] = additionalNotes
+    if selectRegions:
+        data["regions"] = json.loads(selectRegions)
+    if selectCountries:
+        data["countries"] = json.loads(selectCountries)
+    if revisions:
+        data["revisions"] = json.loads(revisions)
+
+    return data
 
 
 @router.get("", response_model=StandardPage, dependencies=[Depends(ensure_cache_initialized)])
@@ -114,6 +95,8 @@ async def list_standards(
 
     total_standards = await get_standards_count(db, approval_status)
     standards = await get_all_standards(db, skip=offset, limit=limit, approval_status=approval_status)
+
+    print('All standards:', standards,total_standards)
 
     return StandardPage(
         items=standards,
@@ -145,16 +128,20 @@ async def get_standard(standard_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{standard_id}", response_model=StandardResponseModel, dependencies=[Depends(ensure_cache_initialized)])
+@cache(expire=60)
 async def update_existing_standard(
         standard_id: int,
-        standard_update_data: StandardUpdateModel,
         file: Optional[UploadFile] = File(None),
-        db: AsyncSession = Depends(get_db)
+        db: AsyncSession = Depends(get_db),
+        form_data: Dict[str, Any] = Depends(parse_standard_form_data)
 ):
-    update_data = standard_update_data.model_dump(exclude_unset=True)
-
-    if not update_data and file is None:
+    # Only process fields that are present in the form data
+    if not form_data and file is None:
         raise HTTPException(status_code=400, detail="No update data provided")
+
+    # Validate the form data against the Pydantic model
+    standard_update_data = StandardUpdateModel(**form_data)
+    update_data = standard_update_data.model_dump(exclude_unset=True)
 
     updated_standard = await update_standard(standard_id, update_data, file, db)
 
@@ -181,7 +168,7 @@ async def bulk_upload_standard_files(
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
 
-    results = await bulk_upload_standards(files, db, StandardBase)
+    results = await bulk_upload_standards(files, db, OpenAIStandardModel)
 
     successful = sum(1 for result in results if result.get("status") == "success")
     failed = len(results) - successful
@@ -192,6 +179,21 @@ async def bulk_upload_standard_files(
         failed=failed,
         results=results
     )
+
+@router.post("/bulk-delete", status_code=204)
+async def bulk_delete_standard_files(
+        standard_ids: List[int] = Form(...),
+        db: AsyncSession = Depends(get_db)
+):
+    if not standard_ids:
+        raise HTTPException(status_code=400, detail="No standard IDs provided")
+
+    for standard_id in standard_ids:
+        deleted = await delete_standard(standard_id, db)
+        if not deleted:
+            raise HTTPException(status_code=404, detail=f"Standard with ID {standard_id} not found")
+
+    return None
 
 @router.post("/upload", response_model=StandardResponseModel, status_code=201)
 async def upload_standard_file(
@@ -214,6 +216,20 @@ async def approve_pending_standard(
         raise HTTPException(status_code=404, detail="Standard not found")
     return standard
 
+@router.post("/bulk-approve", status_code=204)
+async def bulk_approve_standards(
+        standard_ids: List[int] = Form(...),
+        db: AsyncSession = Depends(get_db)
+):
+    if not standard_ids:
+        raise HTTPException(status_code=400, detail="No standard IDs provided")
+
+    for standard_id in standard_ids:
+        approved_standard = await approve_standard(standard_id, db)
+        if approved_standard is None:
+            raise HTTPException(status_code=404, detail=f"Standard with ID {standard_id} not found")
+
+    return None
 
 @router.post("/{standard_id}/reject", status_code=204)
 async def reject_pending_standard(

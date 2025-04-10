@@ -142,61 +142,51 @@ async def delete_project(project_id: int, session: AsyncSession) -> bool:
 
 
 async def map_project_standard(project_id: int, structured_response_model: Type, session: AsyncSession) -> Optional[str]:
-    """
-    Map project to standards using an external service and update the project.
 
-    Args:
-        project_id (int): ID of the project.
-        structured_response_model (Type): Pydantic model for the expected OpenAI response structure.
-        session (AsyncSession): Database session.
-
-    Returns:
-        Optional[str]: JSON string of the mapped standards result from OpenAI, or None if project not found.
-                       The project record is updated directly in the database.
-    """
     project = await get_project_by_id(project_id, session)
     if project is None:
         # This case is handled in the route, but good practice to check here too
         return None
 
-    # --- Potential Caching Opportunity ---
-    # If get_all_standards is slow and standards don't change often,
-    # consider caching its result using fastapi-cache or manual Redis caching.
-    # Example (conceptual - requires standard_service setup):
-    # @cache(expire=3600) # Cache for 1 hour
-    # async def get_cached_all_standards(session: AsyncSession):
-    #     return await get_all_standards(session)
-    # all_standards = await get_cached_all_standards(session)
-    # -------------------------------------
     all_standards = await get_all_standards(session) # Assuming this fetches from DB/another source
+    modified_standards = [
+        {"name": standard.name, "description": standard.description, "regions": standard.regions}
+        for standard in all_standards
+    ]
 
     # Ensure technical_details is a dictionary for the prompt
     tech_details_str = json.dumps(project.technical_details) if isinstance(project.technical_details, dict) else str(project.technical_details)
 
     prompt = f"""
-        You are an expert standard mapper. You would be a given a product that is about to be launched and
-        you would be required to map the product to the appropriate standards according to region and counties.
-
-        Below are the product general details:
+       You are an expert standard mapper.You will be given a product that is about to be launched, and your task is to map the product to all appropriate standards based on the following:
+        * Product details (general, technical, and regional)
+        * Technical specifications
+        * Known global standards (both from my provided repository and your own knowledge)
+        Your priority is to:
+        1. First, analyze and recommend standards from the provided repository.
+        2. Then, you must go beyond and recommend additional standards from your own knowledge or external sources — this is mandatory, even if you feel the repo standards already cover the basics.
+        3. Ensure each recommendation is well-reasoned, especially for external standards, and technically aligned with the product details.
+        
+        Product General Details:
         Product Name: {project.name}
         Product Type: {project.product_type}
         Product Category: {project.product_category}
-        Intended Use of Product: {project.use}
-        Dimensions of Product: {project.dimensions}
-        Weight of Product: {project.weight}
-        Product Description: {project.description}
-        Product Regions to launch product: {project.regions}
-        Product Countries to launch product: {project.countries}
-        Product has multiple variants: {project.multi_variant}
-        Product uses pre-certified components: {project.pre_certified_components}
-
-        Below are the Technical Details of the product, Standards are to be applied on basis of Technical Details:
-        Technical Details: {tech_details_str}
-
-        Please map the product to the appropriate standards according to region and countries and Specially Technical Details.
-
-You have to return in form of json with the following structure:
-        {{
+        Intended Use: {project.use}
+        Dimensions: {project.dimensions}
+        Weight: {project.weight}
+        Description: {project.description}
+        Regions to launch: {project.regions}
+        Countries to launch: {project.countries}
+        Multiple Variants: {project.multi_variant}
+        Uses Pre-certified Components: {project.pre_certified_components}
+        
+        Technical Details (Prioritize these for mappings):
+        {tech_details_str}
+        
+        Standards Repository (for in_repo: true):
+        {modified_standards}
+        
+        Output format (JSON):
             "mappings": [
                 {{
                     "standard_name": "Standard Name",
@@ -204,17 +194,32 @@ You have to return in form of json with the following structure:
                     "technical_requirements_matched": ["Requirement 1", "Requirement 2"],
                     "reason_for_mapping": "Reason for mapping",
                     "in_repo": true
+                }},
+                {{
+                    "standard_name": "External Standard Name",
+                    "relevance_score": 0.85,
+                    "technical_requirements_matched": ["Requirement A", "Requirement B"],
+                    "reason_for_mapping": "Mapped based on external expertise and region-specific compliance needs.",
+                    "in_repo": false
                 }}
             ],
-            "summary": "Summary of the mapping",
+            "summary": "Summary of the overall mapping decisions.",
             "confidence_score": 0.9
-        }}
         
-        You can match other standards from your knowledge as well. But should have solid reason for mapping. But priority would be to analyze given standards map given standards then look for other standards.
-        in_repo would be true if the standards is from the below provided standards list, if standard is from your knowledge then it would be false.
-
-        Below are the standards available:
-        {all_standards}
+        Important Notes:
+        * Always recommend external standards (not in the repo) — this is mandatory.
+        * For each standard, provide:
+            * Relevance score (out of 1.0)
+            * Matched technical requirements
+            * Reason for inclusion (specific and technical)
+        * For "in_repo":
+            * true → if the standard comes from {modified_standards}
+            * false → if it comes from your knowledge or external trusted sources
+        * The summary should clearly explain:
+            * Overall mapping approach
+            * Priority standards
+            * Regional compliance focus
+        * Focus on technical accuracy and practical applicability.
     """
 
     # Call the external service (e.g., OpenAI)
