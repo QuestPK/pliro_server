@@ -5,7 +5,7 @@ from datetime import date
 
 
 class RevisionBase(BaseModel):
-    id: int
+    id: Optional[int]
     revision_number: str
     revision_date: str
     revision_description: str
@@ -15,7 +15,7 @@ class RevisionBase(BaseModel):
     }
 
 class   StandardBase(BaseModel):
-    id: int
+    id: Optional[int] = None
     name: str
     description: Optional[str]
     issuingOrganization: Optional[str]
@@ -33,6 +33,7 @@ class   StandardBase(BaseModel):
     countries: Optional[List[str]] = None
     file_path: Optional[str] = None
     approval_status: Optional[str] = "approved"
+    presigned_url: Optional[str] = None
 
     model_config = {
         "from_attributes": True
@@ -80,7 +81,6 @@ class StandardUpdateModel(BaseModel):
     standardWebsite: Optional[str] = None
     issueDate: Optional[date] = None
     effectiveDate: Optional[str] = None
-    revisions: Optional[List[str]] = None
     generalCategories: Optional[List[str]] = None
     itCategories: Optional[List[str]] = None
     additionalNotes: Optional[str] = None
@@ -88,7 +88,8 @@ class StandardUpdateModel(BaseModel):
     countries: Optional[List[str]] = None
     file_path: Optional[str] = None
     approval_status: Optional[str] = None
-
+    revisions: Optional[List[RevisionBase]] = None
+    presigned_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

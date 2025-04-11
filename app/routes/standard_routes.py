@@ -17,7 +17,11 @@ from app.services.standard_service import (
     reject_standard, upload_standard
 )
 from app.types.standard_types import StandardPage, StandardResponseModel, StandardCreateModel, StandardUpdateModel, \
-    BulkUploadResponse, OpenAIStandardModel
+    BulkUploadResponse, OpenAIStandardModel, RevisionBase
+from app.utils.cache_utils import (
+    invalidate_standards_list_cache,
+    invalidate_standard_detail_cache
+)
 
 router = APIRouter(
     prefix="",
@@ -43,41 +47,54 @@ async def parse_standard_form_data(
         selectCountries: str = Form(None),
         revisions: str = Form(None),
 ) -> Dict[str, Any]:
+    raw_data = {
+        "name": name,
+        "description": description,
+        "issuingOrganization": issuingOrganization,
+        "standardNumber": standardNumber,
+        "version": version,
+        "standardOwner": standardOwner,
+        "effectiveDate": effectiveDate,
+        "issueDate": issueDate,
+        "standardWebsite": standardWebsite,
+        "generalCategories": generalCategories,
+        "itCategories": itCategories,
+        "additionalNotes": additionalNotes,
+        "regions": selectRegions,
+        "countries": selectCountries,
+        "revisions": revisions,
+    }
+
     data = {}
+    for key, value in raw_data.items():
+        if value is not None:
+            if key == "revisions":
+                try:
+                    revisions_data = json.loads(value)
+                    # Process each revision to ensure it has the required fields and correct types
+                    processed_revisions = []
+                    for rev in revisions_data:
+                        # Add id if missing
+                        if 'id' not in rev:
+                            rev['id'] = None  # Use None for new revisions
 
-    # Add non-empty fields to data
-    if name:
-        data["name"] = name
-    if description:
-        data["description"] = description
-    if issuingOrganization:
-        data["issuingOrganization"] = issuingOrganization
-    if standardNumber:
-        data["standardNumber"] = standardNumber
-    if version:
-        data["version"] = version
-    if standardOwner:
-        data["standardOwner"] = standardOwner
-    if effectiveDate:
-        data["effectiveDate"] = effectiveDate
-    if issueDate:
-        data["issueDate"] = issueDate
-    if standardWebsite:
-        data["standardWebsite"] = standardWebsite
+                        # Ensure revision_number is a string
+                        if 'revision_number' in rev and not isinstance(rev['revision_number'], str):
+                            rev['revision_number'] = str(rev['revision_number'])
 
-    # Parse JSON fields
-    if generalCategories:
-        data["generalCategories"] = json.loads(generalCategories)
-    if itCategories:
-        data["itCategories"] = json.loads(itCategories)
-    if additionalNotes:
-        data["additionalNotes"] = additionalNotes
-    if selectRegions:
-        data["regions"] = json.loads(selectRegions)
-    if selectCountries:
-        data["countries"] = json.loads(selectCountries)
-    if revisions:
-        data["revisions"] = json.loads(revisions)
+                        processed_revisions.append(rev)
+
+                    # Create a list of RevisionBase objects with the processed data
+                    data[key] = [RevisionBase(**rev) for rev in processed_revisions]
+                except json.JSONDecodeError:
+                    raise HTTPException(status_code=400, detail=f"Invalid JSON in field: {key}")
+            elif key in {"generalCategories", "itCategories", "regions", "countries"}:
+                try:
+                    data[key] = json.loads(value)
+                except json.JSONDecodeError:
+                    raise HTTPException(status_code=400, detail=f"Invalid JSON in field: {key}")
+            else:
+                data[key] = value
 
     return data
 
@@ -96,8 +113,6 @@ async def list_standards(
     total_standards = await get_standards_count(db, approval_status)
     standards = await get_all_standards(db, skip=offset, limit=limit, approval_status=approval_status)
 
-    print('All standards:', standards,total_standards)
-
     return StandardPage(
         items=standards,
         total=total_standards,
@@ -109,12 +124,21 @@ async def list_standards(
 @router.post("", response_model=StandardResponseModel, status_code=201,
              dependencies=[Depends(ensure_cache_initialized)])
 async def create_new_standard(
-        standard_data: StandardCreateModel = Depends(),
         file: Optional[UploadFile] = File(None),
-        db: AsyncSession = Depends(get_db)
+        db: AsyncSession = Depends(get_db),
+        form_data: Dict[str, Any] = Depends(parse_standard_form_data)
 ):
-    standard_dict = standard_data.model_dump()
+    if not form_data and file is None:
+        raise HTTPException(status_code=400, detail="No data provided")
+
+    standard_create_data = StandardCreateModel(**form_data)
+    standard_dict = standard_create_data.model_dump()
+
     created_standard = await create_standard(standard_dict, file, db)
+
+    # Invalidate list cache after creating a new standard
+    await invalidate_standards_list_cache()
+
     return created_standard
 
 
@@ -128,25 +152,27 @@ async def get_standard(standard_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{standard_id}", response_model=StandardResponseModel, dependencies=[Depends(ensure_cache_initialized)])
-@cache(expire=60)
 async def update_existing_standard(
         standard_id: int,
         file: Optional[UploadFile] = File(None),
         db: AsyncSession = Depends(get_db),
         form_data: Dict[str, Any] = Depends(parse_standard_form_data)
 ):
-    # Only process fields that are present in the form data
     if not form_data and file is None:
         raise HTTPException(status_code=400, detail="No update data provided")
 
-    # Validate the form data against the Pydantic model
     standard_update_data = StandardUpdateModel(**form_data)
     update_data = standard_update_data.model_dump(exclude_unset=True)
+
+    print('update standard,',standard_id, 'Update data',update_data)
 
     updated_standard = await update_standard(standard_id, update_data, file, db)
 
     if updated_standard is None:
         raise HTTPException(status_code=404, detail="Standard not found")
+
+    await invalidate_standards_list_cache()
+    await invalidate_standard_detail_cache(standard_id)
 
     return updated_standard
 
@@ -156,6 +182,10 @@ async def remove_standard(standard_id: int, db: AsyncSession = Depends(get_db)):
     deleted = await delete_standard(standard_id, db)
     if not deleted:
         raise HTTPException(status_code=404, detail="Standard not found")
+
+    # Invalidate both the list cache and this specific standard's detail cache
+    await invalidate_standards_list_cache()
+    await invalidate_standard_detail_cache(standard_id)
 
     return None
 
@@ -170,6 +200,9 @@ async def bulk_upload_standard_files(
 
     results = await bulk_upload_standards(files, db, OpenAIStandardModel)
 
+    # Invalidate standards list cache after bulk upload
+    await invalidate_standards_list_cache()
+
     successful = sum(1 for result in results if result.get("status") == "success")
     failed = len(results) - successful
 
@@ -179,6 +212,7 @@ async def bulk_upload_standard_files(
         failed=failed,
         results=results
     )
+
 
 @router.post("/bulk-delete", status_code=204)
 async def bulk_delete_standard_files(
@@ -193,7 +227,14 @@ async def bulk_delete_standard_files(
         if not deleted:
             raise HTTPException(status_code=404, detail=f"Standard with ID {standard_id} not found")
 
+        # Invalidate the detail cache for each deleted standard
+        await invalidate_standard_detail_cache(standard_id)
+
+    # Invalidate standards list cache after bulk delete
+    await invalidate_standards_list_cache()
+
     return None
+
 
 @router.post("/upload", response_model=StandardResponseModel, status_code=201)
 async def upload_standard_file(
@@ -204,7 +245,12 @@ async def upload_standard_file(
         raise HTTPException(status_code=400, detail="No file provided")
 
     created_standard = await upload_standard(file, db, OpenAIStandardModel)
+
+    # Invalidate standards list cache after upload
+    await invalidate_standards_list_cache()
+
     return created_standard
+
 
 @router.post("/{standard_id}/approve", response_model=StandardResponseModel)
 async def approve_pending_standard(
@@ -214,7 +260,13 @@ async def approve_pending_standard(
     standard = await approve_standard(standard_id, db)
     if standard is None:
         raise HTTPException(status_code=404, detail="Standard not found")
+
+    # Invalidate both the list cache and this specific standard's detail cache
+    await invalidate_standards_list_cache()
+    await invalidate_standard_detail_cache(standard_id)
+
     return standard
+
 
 @router.post("/bulk-approve", status_code=204)
 async def bulk_approve_standards(
@@ -229,7 +281,14 @@ async def bulk_approve_standards(
         if approved_standard is None:
             raise HTTPException(status_code=404, detail=f"Standard with ID {standard_id} not found")
 
+        # Invalidate the detail cache for each approved standard
+        await invalidate_standard_detail_cache(standard_id)
+
+    # Invalidate standards list cache after bulk approve
+    await invalidate_standards_list_cache()
+
     return None
+
 
 @router.post("/{standard_id}/reject", status_code=204)
 async def reject_pending_standard(
@@ -239,4 +298,9 @@ async def reject_pending_standard(
     rejected = await reject_standard(standard_id, db)
     if not rejected:
         raise HTTPException(status_code=404, detail="Standard not found")
+
+    # Invalidate both the list cache and this specific standard's detail cache
+    await invalidate_standards_list_cache()
+    await invalidate_standard_detail_cache(standard_id)
+
     return None

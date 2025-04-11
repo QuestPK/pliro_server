@@ -15,7 +15,6 @@ from app.utils.file_storage import upload_file_to_do, delete_file_from_do, \
     generate_presigned_url  # Assuming these utilities exist
 from app.utils.openai_utils import call_openai_structured
 
-
 available_regions = [
     {
         'id': 'americas',
@@ -40,16 +39,16 @@ available_regions = [
 ]
 
 available_countries = [
-"United Arab Emirates",
-                "Saudi Arabia",
-                "Qatar",
-                "Kuwait",
-                "Bahrain",
-                "Oman",
-                "Jordan",
-                "Lebanon",
-                "Iraq",
-                "Yemen",
+    "United Arab Emirates",
+    "Saudi Arabia",
+    "Qatar",
+    "Kuwait",
+    "Bahrain",
+    "Oman",
+    "Jordan",
+    "Lebanon",
+    "Iraq",
+    "Yemen",
     "Brazil",
     "Argentina",
     "Chile",
@@ -124,6 +123,7 @@ available_countries = [
 
 async def create_standard(data: Dict[str, Any], file: Optional[UploadFile] = None,
                           session: AsyncSession = None) -> Standard:
+    # Make a copy of the data to avoid modifying the original
     filtered_data = {k: v for k, v in data.items() if v is not None}
 
     # Handle file upload if provided
@@ -131,12 +131,45 @@ async def create_standard(data: Dict[str, Any], file: Optional[UploadFile] = Non
         file_path = await upload_file_to_do(file)
         filtered_data["file_path"] = file_path
 
+    # Format dates properly
+    if "effectiveDate" in filtered_data and isinstance(filtered_data["effectiveDate"], str):
+        filtered_data["effectiveDate"] = datetime.strptime(filtered_data["effectiveDate"], "%Y-%m-%d").date()
+
+    if "issueDate" in filtered_data and isinstance(filtered_data["issueDate"], str):
+        filtered_data["issueDate"] = datetime.strptime(filtered_data["issueDate"], "%Y-%m-%d").date()
+
+    # Extract revisions data before creating the standard
+    revisions_data = filtered_data.pop('revisions', None)
+
+    # Create new standard
     new_standard = Standard(**filtered_data)
     session.add(new_standard)
+    await session.flush()  # Flush to get the ID without committing
+
+    # Handle revisions if provided
+    if revisions_data:
+        # Import Revision model
+        from app.models.standard_model import Revision  # Adjust import path as needed
+
+        for revision_data in revisions_data:
+            # Convert from Pydantic model to dict if needed
+            if hasattr(revision_data, "model_dump"):
+                revision_dict = revision_data.model_dump()
+            else:
+                revision_dict = revision_data
+
+            # Create new revision
+            new_revision = Revision(
+                revision_number=revision_dict.get('revision_number'),
+                revision_date=revision_dict.get('revision_date'),
+                revision_description=revision_dict.get('revision_description'),
+                standard_id=new_standard.id
+            )
+            session.add(new_revision)
+
     await session.commit()
     await session.refresh(new_standard)
     return new_standard
-
 
 async def get_standard_by_id(standard_id: int, session: AsyncSession) -> Optional[Standard]:
     result = await session.execute(
@@ -148,7 +181,7 @@ async def get_standard_by_id(standard_id: int, session: AsyncSession) -> Optiona
 
     if standard and standard.file_path:
         presigned_url = generate_presigned_url(str(standard.file_path))
-        standard.file_path = presigned_url
+        standard.presigned_url = presigned_url
 
     return standard
 
@@ -184,11 +217,50 @@ async def get_standards_count(session: AsyncSession, approval_status: Optional[s
     return result.scalar_one()
 
 
+async def update_standard_revisions(standard: Standard, revisions_data: List[Any], session: AsyncSession) -> None:
+    # Import your Revision model
+    from app.models.standard_model import Revision  # Adjust import path as needed
+
+    # Create a lookup map of existing revisions
+    existing_revisions = {rev.id: rev for rev in standard.revisions}
+    new_revisions = []
+
+    for revision_data in revisions_data:
+        # Convert from Pydantic model to dict if needed
+        if hasattr(revision_data, "model_dump"):
+            revision_dict = revision_data.model_dump()
+        else:
+            revision_dict = revision_data
+
+        revision_id = revision_dict.get('id')
+
+        if revision_id and revision_id in existing_revisions:
+            # Update existing revision
+            revision = existing_revisions[revision_id]
+            for k, v in revision_dict.items():
+                if k != 'id' and hasattr(revision, k):
+                    setattr(revision, k, v)
+            new_revisions.append(revision)
+        else:
+            # Create new revision
+            new_revision = Revision(
+                revision_number=revision_dict.get('revision_number'),
+                revision_date=revision_dict.get('revision_date'),
+                revision_description=revision_dict.get('revision_description'),
+                standard_id=standard.id
+            )
+            session.add(new_revision)
+            new_revisions.append(new_revision)
+
+    # Update the standard's revisions
+    standard.revisions = new_revisions
+
+
 async def update_standard(standard_id: int, data: Dict[str, Any], file: Optional[UploadFile] = None,
                           session: AsyncSession = None) -> Optional[Standard]:
-
-
     standard = await get_standard_by_id(standard_id, session)
+
+
     if standard is None:
         return None
 
@@ -208,14 +280,22 @@ async def update_standard(standard_id: int, data: Dict[str, Any], file: Optional
     if "issueDate" in data and isinstance(data["issueDate"], str):
         data["issueDate"] = datetime.strptime(data["issueDate"], "%Y-%m-%d").date()
 
+    # Extract revisions data before updating other fields
+    revisions_data = data.pop('revisions', None)
+
+    # Update standard fields
     for key, value in data.items():
         if hasattr(standard, key):
             setattr(standard, key, value)
 
+    # Handle revisions separately if provided
+    if revisions_data is not None:
+        await update_standard_revisions(standard, revisions_data, session)
+
     await session.commit()
     await session.refresh(standard)
-    return standard
 
+    return standard
 
 async def delete_standard(standard_id: int, session: AsyncSession) -> bool:
     standard = await get_standard_by_id(standard_id, session)
@@ -400,6 +480,9 @@ The name of the standard is provided below:
 
             standard_data = call_openai_structured(prompt, structured_response_model)
 
+            # Convert the structured response to a dictionary
+            print('Standard Data', standard_data)
+
             standard_data = json.loads(standard_data)
 
             standard_data["issueDate"] = parse_date(standard_data["issueDate"])
@@ -425,6 +508,7 @@ The name of the standard is provided below:
 
         except Exception as e:
             # Add failed result
+            raise e
             results.append({
                 "file_name": file.filename,
                 "status": "error",

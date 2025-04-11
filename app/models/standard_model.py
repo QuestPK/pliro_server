@@ -28,6 +28,7 @@ class Standard(Base):
     countries: Mapped[str] = mapped_column(ARRAY(String), nullable=True)
     file_path: Mapped[str] = mapped_column(String, nullable=True)
     approval_status: Mapped[str] = mapped_column(String, default="approved")
+    presigned_url: Mapped[str] = mapped_column(String, nullable=True)
 
     revisions: Mapped[List["Revision"]] = relationship(
         "Revision",
