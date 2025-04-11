@@ -55,3 +55,4 @@ alembic.ini
 alembic
 migrations
 alembic/versions
+./alembic.ini
